@@ -21,6 +21,7 @@ test.serial.cb('Get /api/targets -All Targets', function (t) {
   servertest(server(), url, { encoding: 'json' }, function (err, res) {
     t.falsy(err, 'no error')
     t.is(res.statusCode, 200, 'correct statusCode')
+    t.is(res.body.status, 'OK', 'status is ok')
     t.end()
   })
 })
@@ -30,6 +31,7 @@ test.serial.cb('Get /api/target/1 -Target By Id', function (t) {
   servertest(server(), url, { encoding: 'json' }, function (err, res) {
     t.falsy(err, 'no error')
     t.is(res.statusCode, 200, 'correct statusCode')
+    t.is(res.body.status, 'OK', 'status is ok')
     t.end()
   })
 })
@@ -50,7 +52,7 @@ test.serial.cb('POST /api/targets -Add or Update Target', t => {
         $in: ['ca', 'ny']
       },
       hour: {
-        $in: ['13', '14', '15', '23', '24', '00']
+        $in: ['13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24']
       }
     }
   }
@@ -70,11 +72,13 @@ test.serial.cb('Post /route -Get Route ca as geostate and 00 hour', (t) => {
   const visitor = {
     geoState: 'ca',
     publisher: 'abc',
-    timestamp: '2018-07-19T00:28:59.513Z'
+    timestamp: '2018-07-19T23:28:59.513Z'
   }
   streamTest(servertest(server(), '/route', { method: 'POST' }, (err, res) => {
+    const response = JSON.parse(res.body.toString())
     t.falsy(err, 'no error')
     t.is(res.statusCode, 200)
+    t.is(response.status, 'OK', 'status is ok')
     t.end()
   }), visitor)
 })

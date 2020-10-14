@@ -15,10 +15,10 @@ function getHours (timestamp) {
 
 // Get All targets stored in redis.
 async function getAllTargets () {
-  const AllKeys = await _execRedisAsync('keys', 'target:*')
+  const AllKeys = await _execRedisAsync('hvals', 'targets')
   const promises = []
   for (const i in AllKeys) {
-    promises.push(JSON.parse(await _execRedisAsync('get', AllKeys[i])))
+    promises.push(JSON.parse(AllKeys[i]))
   }
   const allTargets = await Promise.all(promises)
   return allTargets
@@ -59,18 +59,22 @@ async function checkTarget (data, target) {
   if (target.accept.hour.$in.includes(data.hour) !== true) {
     return null
   }
-  let result = await _execRedisAsync('get', 'LimitRecord:' + target.id + ':' + data.publisher)
-  result = JSON.parse(result)
-  const datetime = new Date()
-  const date = datetime.toISOString().slice(0, 10)
-  if (result.date !== date) {
-    return target
-  } else {
-    if (result.hit > target.maxAcceptsPerDay) {
-      return null
-    } else {
+  let result = await _execRedisAsync('hget', 'limit-' + target.id, data.publisher)
+  if (result !== null) {
+    result = JSON.parse(result)
+    const datetime = new Date()
+    const date = datetime.toISOString().slice(0, 10)
+    if (result.date !== date) {
       return target
+    } else {
+      if (result.hit > target.maxAcceptsPerDay) {
+        return null
+      } else {
+        return target
+      }
     }
+  } else {
+    return target
   }
 }
 
@@ -80,14 +84,14 @@ const getTargetsHandle = async () => {
   return {
     code: 200,
     status: 'OK',
-    result: targets
+    result: { status: 'OK', targets: targets }
   }
 }
 
 // api/targets -POST
 const addOrUpdateTargetHandle = async (target) => {
   const serializeTarget = JSON.stringify(target)
-  await _execRedisAsync('set', 'target:' + target.id, serializeTarget)
+  await _execRedisAsync('hset', 'targets', target.id, serializeTarget)
   return {
     code: 200,
     result: {
@@ -98,9 +102,10 @@ const addOrUpdateTargetHandle = async (target) => {
 
 // api/target/:id -GET
 const getTargetByIdHandle = async (id) => {
+  const target = await _execRedisAsync('hget', 'targets', id)
   return {
     code: 200,
-    result: await _execRedisAsync('get', 'target:' + id)
+    result: { status: 'OK', target: target }
   }
 }
 
@@ -121,22 +126,22 @@ const filterHandle = async (body) => {
     const selectedTarget = filteredTargets[0]
     const datetime = new Date()
     const date = datetime.toISOString().slice(0, 10)
-    let result = await _execRedisAsync('get', 'LimitRecord:' + selectedTarget.id + ':' + body.publisher)
+    let result = await _execRedisAsync('hget', 'limit-' + selectedTarget.id, body.publisher)
     if (result == null) {
-      let insertRecord = { hit: 1, date: date }
+      let insertRecord = [{ hit: 1, date: date, target: selectedTarget.id }]
       insertRecord = JSON.stringify(insertRecord)
-      await _execRedisAsync('set', 'LimitRecord:' + selectedTarget.id + ':' + body.publisher, insertRecord)
+      await _execRedisAsync('hset', 'limit-' + selectedTarget.id, body.publisher, insertRecord)
     } else {
       result = JSON.parse(result)
-      let updateRecord = { hit: result.hit + 1, date: date }
+      let updateRecord = { hit: result.hit + 1, date: date, target: selectedTarget.id }
       updateRecord = JSON.stringify(updateRecord)
-      await _execRedisAsync('set', 'LimitRecord:' + selectedTarget.id + ':' + body.publisher, updateRecord)
-      return {
-        code: 200,
-        result: {
-          status: 'OK',
-          url: selectedTarget.url
-        }
+      await _execRedisAsync('hset', 'limit-' + selectedTarget.id, body.publisher, updateRecord)
+    }
+    return {
+      code: 200,
+      result: {
+        status: 'OK',
+        url: selectedTarget.url
       }
     }
   }
